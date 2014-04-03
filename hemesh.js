@@ -468,6 +468,24 @@ Hemesh.prototype.hodgeStar1Form = function() {
 	return numeric.ccsScatter(star1);
 }
 
+Hemesh.prototype.hodgeStarInverse1Form = function() {
+	var star1 = [[],[],[]];
+	var n = this.halfedgeAdjacency.length/2;
+	
+	for(var h=0; h < n*2; h += 2) {
+		if(this.faceValid(this.halfedgeFace(h))) {
+			var ho = h+1;
+			var cotAlpha = this.halfedgeCotan(h);
+			var cotBeta = this.halfedgeCotan(ho);
+			
+			star1[0].push(h/2);
+			star1[1].push(h/2);
+			star1[2].push(1/((cotAlpha + cotBeta)*0.5));
+		}
+	}
+	return numeric.ccsScatter(star1);
+}
+
 Hemesh.prototype.exteriorDerivative0Form = function() {
 	var d0 = [[],[],[]];
 	var nV = this.vertexAdjacency.length;
