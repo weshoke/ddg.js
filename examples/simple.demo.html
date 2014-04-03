@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+	<style>
+		canvas { width: 100%; height: 100% }
+	</style>
+	<script src="libs/three.js"></script>
+	<script src="libs/TrackballControls.js"></script>
+	<script src="libs/TrackballControls.js"></script>
+	<script src="libs/numeric-1.2.6.js"></script>
+	<script src="libs/ThreeSetup.js"></script>
+	<script src="../hemesh.js"></script>
+	</head>
+	<body>
+	<script>
+
+var objText = [
+	"v 0.0 1 0",
+	"v 1 0 0",
+	"v 0 0 -1",
+	"v -1 0 0",
+	"v 0 0 1",
+	"v 0 -1 0",
+	"# 6 vertices",
+	"",
+	"f 6 5 4",
+	"f 5 2 1",
+	"f 1 2 3",
+	"f 1 3 4",
+	"f 5 1 4",
+	"f 2 5 6",
+	"f 3 2 6",
+	"f 4 3 6",
+	"# 8 faces",
+	""
+].join("\n");
+
+function normalMatrixToGeometry(hemesh, N) {
+	var geo = new THREE.Geometry();
+	for(var v=0; v < hemesh.vertexAdjacency.length; ++v) {
+		if(hemesh.halfedgeValid(hemesh.vertexHalfedge(v))) {
+			var p = hemesh.vertexPoint(v);
+			var n = new THREE.Vector3(N[v][0], N[v][1], N[v][2]);			
+			geo.vertices.push(p);
+			geo.vertices.push(n.add(p));
+		}
+	}
+	return geo;
+}
+
+
+// Create the halfedge mesh from an OBJ
+var hemesh = new Hemesh();
+hemesh.fromOBJ(objText);
+hemesh.triangluate();
+
+// Generate the normals from the Laplacian
+var L = hemesh.laplacian();
+var N = hemesh.meanCurvatureNormals(L);
+
+
+// Create Three.js representation
+var geo = hemesh.toGeometry();
+var wireframeMtl = new THREE.MeshBasicMaterial({
+	color: 0x111111,
+	wireframe: true,
+});
+var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+	color: 0x9e9e9e
+}));
+var wireframeMesh = new THREE.Mesh(geo, wireframeMtl);
+var normals = new THREE.Line(normalMatrixToGeometry(hemesh, N), new THREE.LineBasicMaterial({
+	color: 0xff2222
+}), THREE.LinePieces);
+
+
+// Add to scene
+var setup = new ThreeSetup();
+setup.scene.add(wireframeMesh);
+setup.scene.add(mesh);
+setup.scene.add(normals);
+
+
+window.addEventListener('resize', onWindowResize, false)
+function onWindowResize() {
+	setup.resize();
+}
+
+function render() {
+	requestAnimationFrame(render);
+	setup.render();
+}
+render();
+	</script>
+	</body>
+</html>
