@@ -549,6 +549,12 @@ Hemesh.prototype.positionMatrix = function() {
 	return P;
 }
 
+Hemesh.prototype.dualVertexMatrix = function() {
+	var star0 = this.hodgeStar0Form();
+	var pos = this.positionMatrix();
+	return numeric.dot(numeric.ccsFull(star0), pos);
+}
+
 Hemesh.prototype.meanCurvatureNormals = function(L) {
 	var star0 = this.hodgeStarInverse0Form();
 	var P = this.positionMatrix();
