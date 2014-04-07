@@ -27,6 +27,10 @@ Hemesh.prototype.addVertex = function(pos) {
 	return this.vertexAdjacency.length-1;
 }
 
+Hemesh.prototype.moveVertexTo = function(v, pos) {
+	this.positions[v] = pos;
+}
+
 Hemesh.prototype.createHalfedgeAdjacencyInfo = function() {
 	return {
 		prev: HEMESH_INVALID_IDX,
@@ -42,7 +46,7 @@ Hemesh.prototype.addEdge = function() {
 	return this.halfedgeAdjacency.length-2;
 }
 
-Hemesh.prototype.addFaces = function(faces) {
+Hemesh.prototype.addFaces = function(faces, notNew) {
 	var edges = {};
 	var edgeMap = {};
 	
@@ -63,14 +67,25 @@ Hemesh.prototype.addFaces = function(faces) {
 			if(edges[k] === undefined) {
 				edges[k] = [v1, v2];
 				
-				var h1 = this.addEdge();
-				var h2 = h1+1;
+				//if(dbg) console.log("ADD:", v1, v2, this.findHalfedge(v1, v2, true));
 				
-				this.setHalfedgeVertex(h1, v2);
-				this.setHalfedgeVertex(h2, v1);
-				this.setVertexHalfedge(v2, h1);
-				this.setVertexHalfedge(v1, h2);
-				edgeMap[k] = h1;
+				var hfound = HEMESH_INVALID_IDX;
+				if(notNew) hfound = this.findHalfedge(v1, v2);
+				if(this.halfedgeValid(hfound)) {
+					edgeMap[k] = hfound;
+				}
+				else {
+					var h1 = this.addEdge();
+					var h2 = h1+1;
+					this.setHalfedgeVertex(h1, v2);
+					this.setHalfedgeVertex(h2, v1);
+					
+					if(!notNew) {
+						this.setVertexHalfedge(v2, h1);
+						this.setVertexHalfedge(v1, h2);
+					}
+					edgeMap[k] = h1;
+				}
 			}
 		}
 	}
@@ -101,16 +116,14 @@ Hemesh.prototype.addFaces = function(faces) {
 		for(var j=0; j < nv; ++j) {
 			var h1 = halfedges[j];
 			var h2 = halfedges[(j+1)%nv];
+			
 			this.setHalfedgeNext(h1, h2);
 			this.setHalfedgePrev(h2, h1);
 		}
 	}
-	
+
 	for(var i=0; i < faces.length; ++i) {
-		var f = this.addFace(faces[i]);
-		if(faces[i].inset) {
-			this.insetFaces[f] = true;
-		}
+		this.addFace(faces[i]);
 	}
 }
 
@@ -120,6 +133,7 @@ Hemesh.prototype.addFace = function(vertices) {
 	var halfedgesNext = [];
 	var exists = [];
 	var nv = vertices.length;
+	
 	for(var i=0; i < nv; ++i) {
 		var v1 = vertices[i];
 		var v2 = vertices[(i+1)%nv];
@@ -299,6 +313,10 @@ Hemesh.prototype.vertexPoint = function(v) {
 	return this.positions[v];
 }
 
+Hemesh.prototype.vertexValid = function(v) {
+	return v !== HEMESH_INVALID_IDX;
+}
+
 Hemesh.prototype.vertexHalfedge = function(v) {
 	return this.vertexAdjacency[v];
 }
@@ -406,9 +424,10 @@ Hemesh.prototype.halfedgeSinkCCW = function(h) {
 	return this.halfedgePrev(this.halfedgeOpposite(h));
 }
 
-Hemesh.prototype.findHalfedge = function(v1, v2) {
+Hemesh.prototype.findHalfedge = function(v1, v2, dbg) {
 	var h1 = this.vertexHalfedge(v1);
 	var h2 = this.vertexHalfedge(v2);
+	
 	if(this.halfedgeValid(h2) && this.halfedgeValid(h1)) {
 		var hs = h2;
 		do {
@@ -417,6 +436,7 @@ Hemesh.prototype.findHalfedge = function(v1, v2) {
 			if(this.halfedgeSource(h2) == v1) {
 				return h2;
 			}
+			
 			h2 = this.halfedgeSinkCCW(h2);
 		} while(h2 !== hs);
 	}
@@ -424,7 +444,7 @@ Hemesh.prototype.findHalfedge = function(v1, v2) {
 }
 
 /***************
-	Differentual forms operations
+	Differential forms operations
 */
 Hemesh.prototype.hodgeStar0Form = function() {
 	var star0 = [[],[],[]];
@@ -539,7 +559,7 @@ Hemesh.prototype.meanCurvatureNormals = function(L) {
 /***************
 	Mesh-level operations
 */
-Hemesh.prototype.triangluate = function() {
+Hemesh.prototype.triangulate = function() {
 	var newFaces = [];
 	for(var f=0; f < this.faceAdjacency.length; ++f) {
 		var h = this.faceHalfedge(f);
@@ -555,7 +575,40 @@ Hemesh.prototype.triangluate = function() {
 			}
 		}
 	}
-	this.addFaces(newFaces);
+
+	this.addFaces(newFaces, true);
+}
+
+Hemesh.prototype.normalize = function() {
+	var min = new THREE.Vector3(1000000, 1000000, 1000000);
+	var max = new THREE.Vector3(-1000000, -1000000, -1000000);
+	
+	for(var v=0; v < this.vertexAdjacency.length; ++v) {
+		if(this.halfedgeValid(this.vertexHalfedge(v))) {
+			var p = this.vertexPoint(v);
+			min.min(p);
+			max.max(p);
+		}
+	}
+	
+	var range = max.clone().sub(min);
+	var scale = new THREE.Vector3(2/range.x, 2/range.y, 2/range.z);
+	var one = new THREE.Vector3(1, 1, 1);
+	
+	for(var v=0; v < this.vertexAdjacency.length; ++v) {
+		if(this.halfedgeValid(this.vertexHalfedge(v))) {
+			var p = this.vertexPoint(v);
+			p.sub(min).multiply(scale).sub(one);
+			this.moveVertexTo(v, p);
+		}
+	}
+	
+	for(var v=0; v < this.vertexAdjacency.length; ++v) {
+		if(this.halfedgeValid(this.vertexHalfedge(v))) {
+			var p = this.vertexPoint(v);
+			//console.log(v, p.x, p.y, p.z);
+		}
+	}
 }
 
 /***************
@@ -568,7 +621,7 @@ Hemesh.prototype.fromOBJ = function(text) {
 	for(var i=0; i < lines.length; ++i) {
 		var line = lines[i];
 		if(line[0] === "v") {
-			var coords = line.match(/[\d.-]+/g);
+			var coords = line.match(/[e\d.-]+/g);
 			for(var j=0; j < coords.length; ++j) {
 				coords[j] = parseFloat(coords[j]);
 			}
@@ -576,7 +629,7 @@ Hemesh.prototype.fromOBJ = function(text) {
 		}
 		else if(line[0] === "f") {
 			var indices = line.match(/[\d.]+/g);
-			for(var j=0; j < coords.length; ++j) {
+			for(var j=0; j < indices.length; ++j) {
 				indices[j] = parseInt(indices[j])-1;
 			}
 			faces.push(indices);
@@ -644,6 +697,19 @@ Hemesh.prototype.toGeometry = function() {
 			} while(h != hs);
 			
 			geometry.faces.push(new THREE.Face3(ff[0], ff[1], ff[2]));
+		}
+	}
+	return geometry;
+}
+
+Hemesh.prototype.toWireframeGeometry = function() {
+	var geometry = new THREE.Geometry();
+	for(var h=0; h < this.halfedgeAdjacency.length; h += 2) {
+		if(hemesh.vertexValid(this.halfedgeVertex(h))) {
+			var v1 = this.halfedgeSource(h);
+			var v2 = this.halfedgeSink(h);
+			geometry.vertices.push(this.vertexPoint(v1));
+			geometry.vertices.push(this.vertexPoint(v2));	
 		}
 	}
 	return geometry;
